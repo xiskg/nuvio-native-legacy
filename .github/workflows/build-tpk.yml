@@ -45,6 +45,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tools/env.sh reads local.properties (the same file as the web app) and
+      # passes the keys to the C compiler. Without it the app installs and runs,
+      # but logs "[nuvem] SEM CONFIGURACAO": no login, no sync, no addons and no
+      # TMDB metadata. Keep the file out of git; the repository secret has the
+      # same contents as the owner's local.properties.
+      - name: Write local.properties
+        env:
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LOCAL_PROPERTIES:-}" ]; then
+            echo "::error::secret LOCAL_PROPERTIES is empty; refusing to build an app without keys"
+            exit 1
+          fi
+          printf '%s\n' "$LOCAL_PROPERTIES" > local.properties
+          chmod 600 local.properties
+          # --env-file keeps the values out of the job log. NUVIO_REQUIRE_ALL=1
+          # fails if any release key (account, Trakt, Simkl, TMDB) is missing.
+          NUVIO_REQUIRE_ALL=1 tools/env.sh --env-file /tmp/nuvio-env-check
+          rm -f /tmp/nuvio-env-check
+
       # tools/tpk.sh compiles libnuvio.so inside a linux/arm/v5 container.
       - name: Enable ARM emulation for Docker
         uses: docker/setup-qemu-action@v3
